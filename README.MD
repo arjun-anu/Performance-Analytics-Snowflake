@@ -1042,39 +1042,6 @@ Query optimizer
 						 |
 						 v
 					 scan data
-
-## Current repository layout (canonical)
-This section lists the actual files, dbt models, and Snowflake schemas used by this repository so you can rely on it as the single source of truth.
-
-- Root files: `DECISIONS.md`, `requirements.txt`, `rsa_key.p8`, `rsa_key.pub`
-- Data: `data/athletes.csv`, `data/sessions.csv`
-- dbt project: `dbt_project/` (models, macros, profiles)
-- Python scripts and helpers: `src/`
-	- `src/load_to_snowflake.py` — loader: PUT/COPY local CSVs to the BRONZE landing stage and `COPY INTO` BRONZE raw tables
-	- `src/run_dbt_pipeline.py` — runs dbt and summarizes `run_results.json`
-	- `src/snowflake_conn.py` — centralized Snowflake connection and private-key handling
-	- `src/manage_schemas.py` — list / drop schemas helper (use `--yes` for destructive ops)
-
-dbt model → file mapping (project context)
-- `stg_athletes` ← `dbt_project/models/staging/stg_athletes.sql`
-- `stg_athletes_clean` ← `dbt_project/models/staging/stg_athletes_clean.sql`
-- `stg_athletes_quarantine` ← `dbt_project/models/staging/stg_athletes_quarantine.sql`
-- `stg_sessions` ← `dbt_project/models/staging/stg_sessions.sql`
-- `stg_sessions_clean` ← `dbt_project/models/staging/stg_sessions_clean.sql`
-- `stg_sessions_quarantine` ← `dbt_project/models/staging/stg_sessions_quarantine.sql`
-- `stg_quarantine_records` ← `dbt_project/models/staging/stg_quarantine_records.sql` (kept but disabled)
-- `clean_sessions` ← `dbt_project/models/marts/clean_sessions.sql` (the actual GOLD session mart — `fct_athlete_sessions` is referenced in older parts of this doc but no such model exists in this project)
-- `val_summary` ← `dbt_project/models/marts/val_summary.sql`
-
-Database & schema names used by this project
-- Database: `PERFORMANCE_ANALYTICS` (project target)
-- Schemas:
-	- `BRONZE` — landing raw payloads (VARCHAR + lineage)
-	- `SILVER` — typed staging models (prefixed `stg_`)
-	- `QUARANTINE` — quarantined rows with `failure_reason`
-	- `GOLD` — marts and fact tables (analytics-ready)
-
-If you want, I can also replace any remaining legacy `PERFORMANCE_ANALYTICS` references elsewhere in the README with `PERFORMANCE_ANALYTICS` and remove older `scripts/` references — tell me if you'd like that full sweep.
 ```
 
 If a query asks for a recent date window (for example last 28 days), Snowflake
@@ -1250,7 +1217,7 @@ At scale, one option is to cluster the serving fact table on the dominant
 filter dimensions:
 
 ```sql
-ALTER TABLE GOLD.FCT_ATHLETE_SESSIONS
+ALTER TABLE GOLD.CLEAN_SESSIONS
 CLUSTER BY (squad, session_date);
 ```
 
