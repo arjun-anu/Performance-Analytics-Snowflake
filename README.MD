@@ -129,6 +129,12 @@ python -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.
 
 (`requirements.txt` already includes `dbt-core` and `dbt-snowflake` — no separate install step needed.)
 
+Also in the root folder, make a folder named data and copy athletes.csv  and sessions.csv into it. 
+
+```bash
+mkdir data
+```
+
 **3. Generate a key pair for Snowflake auth (skip if you already have one)**
 
 ```bash
@@ -156,6 +162,10 @@ SNOWFLAKE_WAREHOUSE=<warehouse_name>
 # dbt_project/profiles.yml's default, so leave both unset or override both).
 SNOWFLAKE_DATABASE=performance_analytics
 SNOWFLAKE_PRIVATE_KEY_PATH=~/.snowflake/rsa_key.p8
+# Optional -- set to true for full dbt --debug output (compiled SQL, timing,
+# connection detail) from src/run_dbt_pipeline.py. Off by default since it's
+# noisy; the default output already streams live as the build runs.
+DBT_VERBOSE=false
 ```
 
 `.env` is git-ignored — never commit it. `rsa_key.p8` itself is also
@@ -349,9 +359,12 @@ check `ref()` targets directly rather than trusting the filename.
 
 - `athlete_id`
   - `raw_athlete_id`: `TRIM(athlete_id)` — kept for quarantine diagnostics.
-  - `athlete_id`: `TRY_TO_NUMBER(NULLIF(TRIM(athlete_id), ''))` — leading
-    zeros and blanks collapse to `NULL` as a side effect of the numeric cast
-    (there is no explicit `LTRIM`).
+  - `athlete_id`: `TRY_TO_NUMBER(NULLIF(TRIM(athlete_id), ''))` — two
+    distinct effects: blanks become `NULL` (via `NULLIF`), and leading
+    zeros are dropped as a side effect of the numeric cast (`"0010"` becomes
+    the number `10`, not `NULL` — there is no explicit `LTRIM`, but the
+    numeric value is unaffected, only the zero-padded text form is lost).
+    `raw_athlete_id` above keeps the original padded string if it's needed.
 - `full_name`
   - `INITCAP(TRIM(full_name))`. A blank (empty-string) `full_name` stays an
     empty string here, not `NULL` — it will **not** trip the

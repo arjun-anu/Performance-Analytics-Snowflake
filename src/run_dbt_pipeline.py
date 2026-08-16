@@ -16,6 +16,27 @@ DBT_PROFILES_DIR = DBT_PROJECT_DIR
 SNOWFLAKE_WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE", "elt_pipeline_wh")
 SNOWFLAKE_DATABASE = os.getenv("SNOWFLAKE_DATABASE", "performance_analytics")
 
+def stream_subprocess(command, env=None):
+    """Run `command`, printing its stdout/stderr live, line by line, as it runs.
+
+    Returns the process's exit code. Unlike `subprocess.run(capture_output=True)`,
+    output appears immediately instead of being buffered until the process exits --
+    important for a `dbt build` that can run for minutes across dozens of nodes.
+    """
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,  # merge so error lines interleave in the order dbt emitted them
+        text=True,
+        bufsize=1,  # line-buffered
+        env=env,
+    )
+    for line in process.stdout:
+        print(line, end="", flush=True)
+    process.wait()
+    return process.returncode
+
+
 def run_dbt_and_summarize():
     print("=== Executing dbt Staging Models & Quarantine ===")
     dbt_command = str(DBT_EXECUTABLE) if DBT_EXECUTABLE.exists() else "dbt"
@@ -30,7 +51,10 @@ def run_dbt_and_summarize():
             return
         os.environ["SNOWFLAKE_PRIVATE_KEY_PATH"] = expanded
 
-    # Run 'dbt build' inside the dbt_project directory
+    # Run 'dbt build' inside the dbt_project directory.
+    # --debug (opt-in via DBT_VERBOSE=true) prints full compiled SQL, timing,
+    # and connection detail that dbt omits by default -- much noisier, so it's
+    # off unless asked for.
     command = [
         dbt_command,
         "build",
@@ -39,12 +63,16 @@ def run_dbt_and_summarize():
         "--profiles-dir",
         str(DBT_PROFILES_DIR),
     ]
-    
-    # 1. Run dbt models
-    run_process = subprocess.run(command, capture_output=True, text=True, env=os.environ)
-    print(run_process.stdout)
-    if run_process.returncode != 0:
-        print(run_process.stderr)
+    if os.getenv("DBT_VERBOSE", "").lower() in ("1", "true", "yes"):
+        command.append("--debug")
+
+    # 1. Run dbt models, streaming output live as it happens instead of
+    # buffering the whole build and dumping it at the end (subprocess.run's
+    # capture_output=True silently sat on everything until dbt exited, which
+    # made a multi-minute build look like it was hanging).
+    return_code = stream_subprocess(command, env=os.environ)
+    if return_code != 0:
+        print(f"[WARNING] dbt build exited with code {return_code}; see output above for details.")
 
     # 2. Run dbt tests
     #test_process = subprocess.run([command, "test"], capture_output=True, text=True)
