@@ -54,6 +54,12 @@ logs/
 *.duckdb.wal
 
 #############################################
+# Source data (large/private CSVs, not tracked)
+#############################################
+data/athletes.csv
+data/sessions.csv
+
+#############################################
 # IDE / editor / OS files
 #############################################
 .DS_Store
