@@ -19,6 +19,11 @@ from snowflake_conn import get_snowflake_connection
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "data"
 
+# Defaults match dbt_project/profiles.yml's env_var() fallbacks, so the
+# Python scripts and dbt agree on where things live unless overridden.
+SNOWFLAKE_WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE", "elt_pipeline_wh")
+SNOWFLAKE_DATABASE = os.getenv("SNOWFLAKE_DATABASE", "performance_analytics")
+
 
 def run_query(cursor, query):
     """Execute a SQL statement with minimal logging.
@@ -44,9 +49,14 @@ def main():
     conn = get_snowflake_connection()
     cursor = conn.cursor()
 
-    # Ensure context (warehouse / database / schema) for load operations
-    cursor.execute("USE WAREHOUSE elt_pipeline_wh;")
-    cursor.execute("USE DATABASE performance_analytics;")
+    # Ensure context (warehouse / database / schema) for load operations.
+    # The warehouse itself is NOT auto-created here -- unlike a database, a
+    # warehouse provisions real compute (and cost), so creating it is left as
+    # an explicit setup step (see README Prerequisites) rather than something
+    # this script does silently on your behalf.
+    cursor.execute(f"USE WAREHOUSE {SNOWFLAKE_WAREHOUSE};")
+    cursor.execute(f"CREATE DATABASE IF NOT EXISTS {SNOWFLAKE_DATABASE};")
+    cursor.execute(f"USE DATABASE {SNOWFLAKE_DATABASE};")
     # Load into the BRONZE schema as the canonical landing layer
     cursor.execute("CREATE SCHEMA IF NOT EXISTS BRONZE;")
     cursor.execute("USE SCHEMA BRONZE;")

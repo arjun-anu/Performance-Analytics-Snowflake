@@ -91,13 +91,18 @@ Pipeline summary:
 ### Prerequisites
 
 1. A Snowflake account and user with permissions to create/use:
-   - database: `PERFORMANCE_ANALYTICS`
+   - database: `PERFORMANCE_ANALYTICS` — auto-created (`CREATE DATABASE IF NOT EXISTS`)
+     by `src/load_to_snowflake.py` on first run, so you don't need to create
+     this one yourself. Override the name via the `SNOWFLAKE_DATABASE` env
+     var if you want a different one (both Python scripts and dbt's
+     `profiles.yml` read it, with the same default, so they stay in sync).
    - schemas: `BRONZE`, `SILVER`, `QUARANTINE`, `GOLD`
-   - warehouse: `elt_pipeline_wh` — both `src/load_to_snowflake.py` and
-     `src/run_dbt_pipeline.py` run `USE WAREHOUSE elt_pipeline_wh;` and
-     expect it to already exist (neither script creates it). Create it once
-     up front, or override the name via the `SNOWFLAKE_WAREHOUSE` env var
-     and update those two scripts to match.
+   - warehouse: `elt_pipeline_wh` — **not** auto-created. Unlike a database,
+     a warehouse provisions real compute (and cost), so both
+     `src/load_to_snowflake.py` and `src/run_dbt_pipeline.py` expect it to
+     already exist rather than creating it silently. Create it once up front
+     (step 5 below), or override the name via the `SNOWFLAKE_WAREHOUSE` env
+     var (same story — Python scripts and `profiles.yml` both read it).
 2. Python 3.13+ recommended.
 3. Git.
 4. A local RSA key pair for Snowflake key-pair (JWT) auth — see step 3 below
@@ -147,6 +152,9 @@ SNOWFLAKE_USER=<your_user>
 SNOWFLAKE_ACCOUNT=<your_account>
 SNOWFLAKE_ROLE=ACCOUNTADMIN
 SNOWFLAKE_WAREHOUSE=elt_pipeline_wh
+# Optional -- defaults to performance_analytics if omitted (matches
+# dbt_project/profiles.yml's default, so leave both unset or override both).
+SNOWFLAKE_DATABASE=performance_analytics
 SNOWFLAKE_PRIVATE_KEY_PATH=~/.snowflake/rsa_key.p8
 ```
 
@@ -161,6 +169,10 @@ CREATE WAREHOUSE IF NOT EXISTS elt_pipeline_wh
   AUTO_SUSPEND = 60
   AUTO_RESUME = TRUE;
 ```
+
+You do **not** need a separate step to create the `PERFORMANCE_ANALYTICS`
+database — `src/load_to_snowflake.py` runs `CREATE DATABASE IF NOT EXISTS`
+for you on first run.
 
 **6. Run the pipeline** — see [Fresh Start Run](#fresh-start-run) below.
 
@@ -181,6 +193,9 @@ SNOWFLAKE_USER=<your_user>
 SNOWFLAKE_ACCOUNT=<your_account>
 SNOWFLAKE_ROLE=ACCOUNTADMIN
 SNOWFLAKE_WAREHOUSE=elt_pipeline_wh
+# Optional -- defaults to performance_analytics if omitted (matches
+# dbt_project/profiles.yml's default, so leave both unset or override both).
+SNOWFLAKE_DATABASE=performance_analytics
 SNOWFLAKE_PRIVATE_KEY_PATH=~/.snowflake/rsa_key.p8
 ```
 

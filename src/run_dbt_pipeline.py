@@ -8,7 +8,13 @@ from snowflake_conn import get_snowflake_connection
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DBT_PROJECT_DIR = PROJECT_ROOT / "dbt_project"
 DBT_EXECUTABLE = PROJECT_ROOT / ".venv" / "bin" / "dbt"
-DBT_PROFILES_DIR = DBT_PROJECT_DIR   
+DBT_PROFILES_DIR = DBT_PROJECT_DIR
+
+# Defaults match dbt_project/profiles.yml's env_var() fallbacks and
+# src/load_to_snowflake.py, so all three agree on where things live unless
+# overridden.
+SNOWFLAKE_WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE", "elt_pipeline_wh")
+SNOWFLAKE_DATABASE = os.getenv("SNOWFLAKE_DATABASE", "performance_analytics")
 
 def run_dbt_and_summarize():
     print("=== Executing dbt Staging Models & Quarantine ===")
@@ -129,8 +135,9 @@ def persist_test_results(results):
     conn = get_snowflake_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("USE WAREHOUSE elt_pipeline_wh;")
-        cursor.execute("USE DATABASE performance_analytics;")
+        cursor.execute(f"USE WAREHOUSE {SNOWFLAKE_WAREHOUSE};")
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {SNOWFLAKE_DATABASE};")
+        cursor.execute(f"USE DATABASE {SNOWFLAKE_DATABASE};")
         cursor.execute("CREATE SCHEMA IF NOT EXISTS OBSERVABILITY;")
         cursor.execute("USE SCHEMA OBSERVABILITY;")
         cursor.execute("""
