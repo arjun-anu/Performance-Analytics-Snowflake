@@ -1,0 +1,482 @@
+unit_tests:
+
+  # Baseline: a single fully-valid row must NOT be quarantined. Every other
+  # test below starts from this same row (via the &valid_row anchor) and
+  # overrides exactly the field(s) under test, so each case isolates one rule.
+  - name: positive_all_fields_valid_row_not_quarantined
+    description: "A row that passes every rule must not appear in stg_sessions_quarantine."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - &valid_row
+            raw_session_id: 'S100'
+            session_id: 'S100'
+            athlete_id: 1
+            session_date: '2026-01-15'
+            duration_min: 45
+            distance_unit: 'km'
+            rpe: 5
+            avg_heart_rate: 140
+            max_velocity: 25.5
+            session_athlete_occurrences: 1
+            session_athlete_rank: 1
+      - input: ref('stg_athletes_clean')
+        rows:
+          - &known_athlete
+            athlete_id: 1
+    expect:
+      rows: []
+
+  # --- session_id ---------------------------------------------------------
+
+  - name: negative_missing_session_id_null
+    description: "A null session_id (already nulled upstream) is quarantined as MISSING_SESSION_ID."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            raw_session_id: null
+            session_id: null
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: MISSING_SESSION_ID
+
+  - name: negative_missing_session_id_placeholder_token
+    description: "A placeholder token like 'N/A' (nulled by stg_sessions upstream) is MISSING_SESSION_ID, not INVALID_SESSION_ID_TOKEN."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            raw_session_id: 'N/A'
+            session_id: null
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: MISSING_SESSION_ID
+
+  - name: negative_invalid_session_id_token_format
+    description: "A non-null, non-placeholder session_id that doesn't match ^S\\d+$ is INVALID_SESSION_ID_TOKEN."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            raw_session_id: '12345'
+            session_id: '12345'
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: INVALID_SESSION_ID_TOKEN
+
+  - name: positive_boundary_session_id_minimal_valid_format
+    description: "The shortest possible valid token (S + one digit) is not quarantined."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            raw_session_id: 'S1'
+            session_id: 'S1'
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows: []
+
+  # --- athlete_id ----------------------------------------------------------
+
+  - name: negative_missing_athlete_id
+    description: "A null athlete_id is quarantined as MISSING_ATHLETE_ID."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            athlete_id: null
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: MISSING_ATHLETE_ID
+
+  - name: negative_unmapped_athlete_id
+    description: "A non-null athlete_id with no matching row in stg_athletes is UNMAPPED_ATHLETE_ID."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            athlete_id: 999
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: UNMAPPED_ATHLETE_ID
+
+  # --- (session_id, athlete_id) duplicates ----------------------------------
+  # Uniqueness is on the composite key, NOT session_id alone -- many athletes
+  # legitimately share a session_id (one row per attendee of a squad session).
+  # session_athlete_occurrences/rank are precomputed upstream in stg_sessions;
+  # this model only reads them, so a duplicate is mocked directly rather than
+  # by supplying two input rows.
+
+  - name: negative_duplicate_session_id
+    description: "A non-winning duplicate on (session_id, athlete_id) -- occurrences > 1 and rank > 1 -- is DUPLICATE_SESSION_ATHLETE_ID."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            session_athlete_occurrences: 2
+            session_athlete_rank: 2
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: DUPLICATE_SESSION_ATHLETE_ID
+
+  - name: positive_boundary_duplicate_rank_one_not_quarantined
+    description: "The rank-1 row among (session_id, athlete_id) duplicates is the winner stg_sessions_clean keeps -- not quarantined, even though occurrences > 1."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            session_athlete_occurrences: 2
+            session_athlete_rank: 1
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows: []
+
+  # --- session_date ----------------------------------------------------------
+
+  - name: negative_invalid_date_session_date_null
+    description: "An unparseable/null session_date is quarantined as INVALID_DATE."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            session_date: null
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: INVALID_DATE
+
+  # --- duration_min: valid range is strictly (0, 600) -----------------------
+
+  - name: negative_out_of_range_duration_zero_boundary
+    description: "duration_min = 0 is the lower excluded boundary -> OUT_OF_RANGE_DURATION."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            duration_min: 0
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: OUT_OF_RANGE_DURATION
+
+  - name: negative_out_of_range_duration_negative
+    description: "A negative duration_min -> OUT_OF_RANGE_DURATION."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            duration_min: -10
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: OUT_OF_RANGE_DURATION
+
+  - name: positive_boundary_duration_min_one
+    description: "duration_min = 1 is just inside the lower boundary -> not quarantined."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            duration_min: 1
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows: []
+
+  - name: negative_out_of_range_duration_upper_boundary_600
+    description: "duration_min = 600 is the upper excluded boundary -> OUT_OF_RANGE_DURATION."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            duration_min: 600
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: OUT_OF_RANGE_DURATION
+
+  - name: positive_boundary_duration_min_599
+    description: "duration_min = 599 is just inside the upper boundary -> not quarantined."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            duration_min: 599
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows: []
+
+  # --- distance_unit -----------------------------------------------------
+
+  - name: negative_missing_distance_unit
+    description: "A null distance_unit is quarantined as MISSING_DISTANCE_UNIT."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            distance_unit: null
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: MISSING_DISTANCE_UNIT
+
+  - name: negative_invalid_distance_unit
+    description: "A distance_unit outside (km, m) is quarantined as INVALID_DISTANCE_UNIT."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            distance_unit: 'mi'
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: INVALID_DISTANCE_UNIT
+
+  - name: positive_boundary_distance_unit_case_insensitive
+    description: "distance_unit is matched case-insensitively -- 'KM' is valid, not quarantined."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            distance_unit: 'KM'
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows: []
+
+  # --- rpe: valid range is [1, 10] -----------------------------------------
+
+  - name: negative_out_of_range_rpe_below_range
+    description: "rpe = 0 is below the valid [1, 10] range -> OUT_OF_RANGE_RPE."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            rpe: 0
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: OUT_OF_RANGE_RPE
+
+  - name: positive_boundary_rpe_lower_valid
+    description: "rpe = 1 is the inclusive lower boundary -> not quarantined."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            rpe: 1
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows: []
+
+  - name: negative_out_of_range_rpe_above_range
+    description: "rpe = 11 is above the valid [1, 10] range -> OUT_OF_RANGE_RPE."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            rpe: 11
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: OUT_OF_RANGE_RPE
+
+  - name: positive_boundary_rpe_upper_valid
+    description: "rpe = 10 is the inclusive upper boundary -> not quarantined."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            rpe: 10
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows: []
+
+  # --- avg_heart_rate: valid range is [30, 220] -----------------------------
+
+  - name: negative_out_of_range_heart_rate_below_range
+    description: "avg_heart_rate = 29 is below the valid [30, 220] range -> OUT_OF_RANGE_HEART_RATE."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            avg_heart_rate: 29
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: OUT_OF_RANGE_HEART_RATE
+
+  - name: positive_boundary_heart_rate_lower_valid
+    description: "avg_heart_rate = 30 is the inclusive lower boundary -> not quarantined."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            avg_heart_rate: 30
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows: []
+
+  - name: negative_out_of_range_heart_rate_above_range
+    description: "avg_heart_rate = 221 is above the valid [30, 220] range -> OUT_OF_RANGE_HEART_RATE."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            avg_heart_rate: 221
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: OUT_OF_RANGE_HEART_RATE
+
+  - name: positive_boundary_heart_rate_upper_valid
+    description: "avg_heart_rate = 220 is the inclusive upper boundary -> not quarantined."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            avg_heart_rate: 220
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows: []
+
+  # --- max_velocity: valid range is [0, 40] ---------------------------------
+
+  - name: negative_missing_max_velocity
+    description: "A null max_velocity is quarantined as MISSING_MAX_VELOCITY."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            max_velocity: null
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: MISSING_MAX_VELOCITY
+
+  - name: negative_out_of_range_max_velocity_above_range
+    description: "max_velocity = 41 is above the valid [0, 40] range -> OUT_OF_RANGE_MAX_VELOCITY."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            max_velocity: 41
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows:
+        - failure_reason: OUT_OF_RANGE_MAX_VELOCITY
+
+  - name: positive_boundary_max_velocity_upper_valid
+    description: "max_velocity = 40 is the inclusive upper boundary -> not quarantined."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            max_velocity: 40
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows: []
+
+  - name: positive_boundary_max_velocity_lower_valid
+    description: "max_velocity = 0 is the inclusive lower boundary -> not quarantined."
+    model: stg_sessions_quarantine
+    given:
+      - input: ref('stg_sessions')
+        rows:
+          - <<: *valid_row
+            max_velocity: 0
+      - input: ref('stg_athletes_clean')
+        rows:
+          - *known_athlete
+    expect:
+      rows: []

@@ -1,0 +1,22 @@
+performance_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      # Account locator format: org-account (e.g., xy12345.us-east-1)
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      # Use private-key authentication instead of password. Set the path
+      # to your private key file in the environment variable
+      # `SNOWFLAKE_PRIVATE_KEY_PATH` (absolute path recommended).
+      # Optionally set `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE` if your key is encrypted.
+      # If you prefer password auth, uncomment the next line and set SNOWFLAKE_PASSWORD.
+      # password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') | replace('~', env_var('HOME')) }}"
+      # private_key_passphrase: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PASSPHRASE') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'ACCOUNTADMIN') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'elt_pipeline_wh') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'performance_analytics') }}"
+      schema: "{{ env_var('SNOWFLAKE_SCHEMA', 'PUBLIC') }}"
+      threads: 4
+      client_session_keep_alive: False

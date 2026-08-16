@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: raw_landing
+    database: "{{ env_var('SNOWFLAKE_DATABASE', 'PERFORMANCE_ANALYTICS') }}"
+    schema: "BRONZE"
+    tables:
+      - name: RAW_ATHLETES
+      - name: RAW_SESSIONS

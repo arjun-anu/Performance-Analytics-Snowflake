@@ -1,0 +1,67 @@
+#############################################
+# Secrets / local environment files
+#############################################
+.env
+.env.*
+!.env.example
+
+# Private keys / cert-like local auth material
+*.p8
+*.pem
+*.key
+
+#############################################
+# Python virtual environments
+#############################################
+.venv/
+venv/
+env/
+*.dev.duckdb
+
+#############################################
+# Python caches and build artifacts
+#############################################
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+build/
+dist/
+*.egg-info/
+
+#############################################
+# dbt generated artifacts
+#############################################
+dbt_project/target/
+dbt_project/logs/
+dbt_project/dbt_packages/
+dbt_project/.user.yml
+
+#############################################
+# Local run artifacts
+#############################################
+logs/
+*.duckdb
+*.duckdb.wal
+
+#############################################
+# IDE / editor / OS files
+#############################################
+.DS_Store
+Thumbs.db
+
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+
+.idea/
+

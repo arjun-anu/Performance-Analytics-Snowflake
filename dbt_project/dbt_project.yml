@@ -1,0 +1,40 @@
+name: 'performance_analytics'
+version: '1.0.0'
+config-version: 2
+
+# Must match the profile name in profiles.yml
+profile: 'performance_analytics'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Configure materialization strategies
+models:
+  performance_analytics:
+    # `raw` model folder intentionally left unmapped; rely on model-level schema configs
+    staging:
+      +schema: SILVER
+      +materialized: view
+      stg_athletes_quarantine:
+        +schema: QUARANTINE
+      stg_sessions_quarantine:
+        +schema: QUARANTINE
+    marts:
+      +schema: GOLD
+      +materialized: table
+
+# Persist the actual failing rows (not just pass/fail counts) for any schema
+# or singular test that fails, so failures can be queried/triaged in Snowflake
+# instead of only read from console output.
+tests:
+  performance_analytics:
+    +store_failures: true
+    +schema: TEST_FAILURES

@@ -1,0 +1,85 @@
+version: 2
+
+models:
+  - name: clean_sessions
+    description: >
+      Mart with one cleaned, typed row per session+athlete and athlete
+      attributes attached. Uniqueness is on (session_id, athlete_id), not
+      session_id alone -- multiple athletes can legitimately share a
+      session_id (one row per attendee of a squad session). session_pk is
+      the surrogate key encoding that composite; the tests live on it
+      instead of a model-level expression test.
+    columns:
+      - name: session_pk
+        description: "Surrogate primary key: MD5 hash of (session_id, athlete_id)."
+        tests:
+          - unique:
+              config:
+                severity: error
+          - not_null:
+              config:
+                severity: error
+      - name: session_id
+        description: "Canonical session identifier -- not unique alone; see session_pk."
+        tests:
+          - not_null
+      - name: athlete_id
+        description: "Foreign key to athlete"
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_athletes_clean')
+                field: athlete_id
+      - name: session_date
+        tests:
+          - not_null
+      - name: duration_min
+        tests:
+          - not_null
+      - name: squad
+        description: "Assigned squad name, pulled from `stg_athletes_clean`."
+        tests:
+          - not_null
+      - name: athlete_full_name
+        description: "Athlete full name pulled from `stg_athletes_clean`."
+
+  - name: val_summary
+    description: >
+      Run-level validation/observability summary across the athlete and
+      session pipelines -- a single-row snapshot recomputed on every dbt run,
+      not a historical log (see src/run_dbt_pipeline.py's
+      OBSERVABILITY.DBT_TEST_RUNS table for run-over-run test history).
+    columns:
+      - name: raw_sessions_count
+        description: "COUNT(*) of stg_sessions (typed, unfiltered SILVER layer)."
+        tests:
+          - not_null
+      - name: clean_sessions_count
+        description: "COUNT(*) of stg_sessions_clean (filtered, deduped SILVER layer)."
+        tests:
+          - not_null
+      - name: quarantined_sessions_count
+        description: "COUNT(*) of stg_sessions_quarantine."
+        tests:
+          - not_null
+      - name: unjoined_unmapped_sessions_count
+        description: "Sessions quarantined specifically for UNMAPPED_ATHLETE_ID."
+        tests:
+          - not_null
+      - name: raw_athletes_count
+        description: "COUNT(*) of stg_athletes (typed, unfiltered SILVER layer)."
+        tests:
+          - not_null
+      - name: clean_athletes_count
+        description: "COUNT(*) of stg_athletes_clean (filtered, deduped SILVER layer)."
+        tests:
+          - not_null
+      - name: quarantined_athletes_count
+        description: "COUNT(*) of stg_athletes_quarantine."
+        tests:
+          - not_null
+      - name: summary_generated_at
+        description: "Timestamp this snapshot was computed (CURRENT_TIMESTAMP() at build time)."
+        tests:
+          - not_null

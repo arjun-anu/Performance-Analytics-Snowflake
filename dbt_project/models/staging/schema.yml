@@ -1,0 +1,161 @@
+version: 2
+
+models:
+  - name: stg_athletes
+    description: >
+      Typed/normalized athlete records straight off RAW_ATHLETES, plus dedup
+      ranking metadata. By design this retains every row — including ones
+      with a missing athlete_id and non-winning duplicates — since that's
+      what athlete_id_occurrences/athlete_record_rank are computed over.
+      Uniqueness/not_null belong on `stg_athletes_clean` (the deduped
+      output), not here.
+    columns:
+      - name: athlete_id_occurrences
+        description: "Count of rows sharing this athlete_id (COUNT(*) OVER)."
+        tests:
+          - not_null
+      - name: athlete_record_rank
+        description: >
+          Rank within each athlete_id partition, ordered by date_of_birth
+          then _source_file_row (deterministic tiebreak — not _loaded_at, so
+          repeated runs against unchanged source data agree). Rank 1 is the
+          row stg_athletes_clean keeps.
+        tests:
+          - not_null
+
+  - name: stg_athletes_clean
+    description: >
+      Deduped, fully-validated athlete records — the actual "clean" output
+      of the athlete pipeline. One row per athlete_id (the rank-1 candidate
+      from stg_athletes).
+    columns:
+      - name: athlete_id
+        description: "Deduped primary key for athletes."
+        tests:
+          - unique:
+              config:
+                severity: error
+          - not_null:
+              config:
+                severity: error
+      - name: full_name
+        tests:
+          - not_null:
+              config:
+                severity: error
+      - name: squad
+        tests:
+          - not_null:
+              config:
+                severity: error
+      - name: position
+        tests:
+          - not_null:
+              config:
+                severity: error
+      - name: date_of_birth
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+  - name: stg_athletes_quarantine
+    description: "Athlete rows set aside for data quality review, with an explicit reason code."
+    columns:
+      - name: failure_reason
+        description: "Why the athlete record was quarantined (e.g. MISSING_ATHLETE_ID, DUPLICATE_ATHLETE_ID, OUT_OF_RANGE_HEIGHT)."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+  - name: stg_sessions
+    description: >
+      Typed/normalized session records straight off RAW_SESSIONS, plus dedup
+      ranking metadata. By design this retains every row — including ones
+      with a missing/placeholder session_id or unparseable session_date —
+      since stg_sessions_quarantine relies on those nulls to classify
+      failure reasons. Validation tests belong on `stg_sessions_clean` (the
+      filtered/deduped output), not here.
+    columns:
+      - name: session_athlete_occurrences
+        description: >
+          Count of rows sharing this (session_id, athlete_id) pair
+          (COUNT(*) OVER). NOT keyed on session_id alone -- many athletes
+          legitimately share a session_id (one row per attendee of a squad
+          session).
+        tests:
+          - not_null
+      - name: session_athlete_rank
+        description: >
+          Rank within each (session_id, athlete_id) partition, ordered by
+          recorded_at DESC then _source_file_row (deterministic tiebreak —
+          not _loaded_at, so repeated runs against unchanged source data
+          agree). Rank 1 is the row stg_sessions_clean keeps.
+        tests:
+          - not_null
+
+  - name: stg_sessions_clean
+    description: >
+      Filtered, deduped session records — the actual "clean" output of the
+      session pipeline. Joined to a valid `stg_athletes_clean` row and
+      passing all range checks. Uniqueness is on (session_id, athlete_id),
+      not session_id alone -- multiple athletes can legitimately share a
+      session_id.
+    tests:
+      - unique:
+          config:
+            severity: error
+          column_name: "session_id || '-' || athlete_id"
+    columns:
+      - name: session_id
+        tests:
+          - not_null:
+              config:
+                severity: error
+      - name: athlete_id
+        tests:
+          - not_null:
+              config:
+                severity: error
+          - relationships:
+              config:
+                severity: error
+              arguments:
+                to: ref('stg_athletes_clean')
+                field: athlete_id
+      - name: duration_min
+        tests:
+          - not_null:
+              config:
+                severity: error
+      - name: max_velocity
+        tests:
+          - not_null:
+              config:
+                severity: error
+      - name: avg_heart_rate
+        tests:
+          - not_null:
+              config:
+                severity: error
+      - name: rpe
+        tests:
+          - not_null:
+              config:
+                severity: error
+          - accepted_values:
+              config:
+                severity: error
+              arguments:
+                values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+  - name: stg_sessions_quarantine
+    description: "Session rows set aside for data quality review, with an explicit reason code."
+    columns:
+      - name: failure_reason
+        description: "Why the session record was quarantined (e.g. MISSING_SESSION_ID, UNMAPPED_ATHLETE_ID, DUPLICATE_SESSION_ATHELETE_ID, OUT_OF_RANGE_RPE)."
+        tests:
+          - not_null:
+              config:
+                severity: warn
