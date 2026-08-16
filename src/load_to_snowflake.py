@@ -16,6 +16,9 @@ import os
 from pathlib import Path
 from snowflake_conn import get_snowflake_connection
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DATA_DIR = PROJECT_ROOT / "data"
+
 
 def run_query(cursor, query):
     """Execute a SQL statement with minimal logging.
@@ -53,11 +56,14 @@ def main():
         run_query(cursor, "CREATE OR REPLACE STAGE bronze_landing_stage FILE_FORMAT = (TYPE = CSV SKIP_HEADER = 1);")
 
         # 3. Upload (PUT) the sessions CSV file from the local data/ folder
-        # Note: path is absolute here for reliability in CI; make this configurable if needed
-        run_query(cursor, "PUT 'file:///Users/arjun/Desktop/AthleteSessionAssessment/data/sessions.csv' @bronze_landing_stage auto_compress=true;")
-        
+        # Path is resolved from this file's location (PROJECT_ROOT/data), not hardcoded,
+        # so this works regardless of where the repo is cloned.
+        sessions_csv = (DATA_DIR / "sessions.csv").as_posix()
+        run_query(cursor, f"PUT 'file://{sessions_csv}' @bronze_landing_stage auto_compress=true;")
+
         # 4. Upload (PUT) the athletes CSV file
-        run_query(cursor, "PUT 'file:///Users/arjun/Desktop/AthleteSessionAssessment/data/athletes.csv' @bronze_landing_stage auto_compress=true;")
+        athletes_csv = (DATA_DIR / "athletes.csv").as_posix()
+        run_query(cursor, f"PUT 'file://{athletes_csv}' @bronze_landing_stage auto_compress=true;")
 
         # 5. Create RAW_SESSIONS Table
         create_sessions_table = """

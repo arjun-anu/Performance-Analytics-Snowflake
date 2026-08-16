@@ -90,30 +90,97 @@ Pipeline summary:
 
 ### Prerequisites
 
-1. Snowflake account and user with permissions to create/use:
+1. A Snowflake account and user with permissions to create/use:
    - database: `PERFORMANCE_ANALYTICS`
    - schemas: `BRONZE`, `SILVER`, `QUARANTINE`, `GOLD`
+   - warehouse: `elt_pipeline_wh` — both `src/load_to_snowflake.py` and
+     `src/run_dbt_pipeline.py` run `USE WAREHOUSE elt_pipeline_wh;` and
+     expect it to already exist (neither script creates it). Create it once
+     up front, or override the name via the `SNOWFLAKE_WAREHOUSE` env var
+     and update those two scripts to match.
 2. Python 3.13+ recommended.
-3. Local private key for Snowflake JWT auth.
+3. Git.
+4. A local RSA key pair for Snowflake key-pair (JWT) auth — see step 3 below
+   if you don't have one yet.
 
-### Environment Setup
+### Checkout / First-Time Setup
 
-From repo root:
+Follow these in order for a completely fresh clone.
+
+**1. Clone the repository**
+
+```bash
+git clone https://github.com/arjun-anu/Performance-Analytics-Snowflake.git
+cd Performance-Analytics-Snowflake
+```
+
+**2. Create the Python environment**
 
 ```bash
 /opt/homebrew/bin/python3.13 -m venv .venv
 source .venv/bin/activate
 python -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt
-python -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org dbt-core dbt-snowflake
 ```
 
-Create `.env` in repo root:
+(`requirements.txt` already includes `dbt-core` and `dbt-snowflake` — no separate install step needed.)
+
+**3. Generate a key pair for Snowflake auth (skip if you already have one)**
+
+```bash
+mkdir -p ~/.snowflake
+openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out ~/.snowflake/rsa_key.p8 -nocrypt
+openssl rsa -in ~/.snowflake/rsa_key.p8 -pubout -out ~/.snowflake/rsa_key.pub
+```
+
+Register the **public** key against your Snowflake user (run in Snowflake,
+as a role with permission to alter the user — paste the public key's body
+without the `-----BEGIN/END-----` lines, no line breaks):
+
+```sql
+ALTER USER <your_user> SET RSA_PUBLIC_KEY='<contents of rsa_key.pub>';
+```
+
+**4. Create `.env` in the repo root**
 
 ```dotenv
 SNOWFLAKE_USER=<your_user>
 SNOWFLAKE_ACCOUNT=<your_account>
 SNOWFLAKE_ROLE=ACCOUNTADMIN
-SNOWFLAKE_WAREHOUSE=COMPUTE_WH
+SNOWFLAKE_WAREHOUSE=elt_pipeline_wh
+SNOWFLAKE_PRIVATE_KEY_PATH=~/.snowflake/rsa_key.p8
+```
+
+`.env` is git-ignored — never commit it. `rsa_key.p8` itself is also
+git-ignored (`*.p8` in `.gitignore`); only its path is referenced here.
+
+**5. Create the Snowflake warehouse** (if it doesn't already exist)
+
+```sql
+CREATE WAREHOUSE IF NOT EXISTS elt_pipeline_wh
+  WAREHOUSE_SIZE = 'XSMALL'
+  AUTO_SUSPEND = 60
+  AUTO_RESUME = TRUE;
+```
+
+**6. Run the pipeline** — see [Fresh Start Run](#fresh-start-run) below.
+
+### Environment Setup
+
+Already covered by steps 2–5 above if you're setting up from a fresh
+clone. This section is kept as a quick reference for re-creating just the
+Python environment or `.env` file later without repeating the full checkout.
+
+```bash
+/opt/homebrew/bin/python3.13 -m venv .venv
+source .venv/bin/activate
+python -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt
+```
+
+```dotenv
+SNOWFLAKE_USER=<your_user>
+SNOWFLAKE_ACCOUNT=<your_account>
+SNOWFLAKE_ROLE=ACCOUNTADMIN
+SNOWFLAKE_WAREHOUSE=elt_pipeline_wh
 SNOWFLAKE_PRIVATE_KEY_PATH=~/.snowflake/rsa_key.p8
 ```
 
