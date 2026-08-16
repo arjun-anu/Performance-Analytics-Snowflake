@@ -151,7 +151,7 @@ ALTER USER <your_user> SET RSA_PUBLIC_KEY='<contents of rsa_key.pub>';
 SNOWFLAKE_USER=<your_user>
 SNOWFLAKE_ACCOUNT=<your_account>
 SNOWFLAKE_ROLE=ACCOUNTADMIN
-SNOWFLAKE_WAREHOUSE=elt_pipeline_wh
+SNOWFLAKE_WAREHOUSE=<warehouse_name>
 # Optional -- defaults to performance_analytics if omitted (matches
 # dbt_project/profiles.yml's default, so leave both unset or override both).
 SNOWFLAKE_DATABASE=performance_analytics
@@ -164,7 +164,7 @@ git-ignored (`*.p8` in `.gitignore`); only its path is referenced here.
 **5. Create the Snowflake warehouse** (if it doesn't already exist)
 
 ```sql
-CREATE WAREHOUSE IF NOT EXISTS elt_pipeline_wh
+CREATE WAREHOUSE IF NOT EXISTS <warehouse_name>
   WAREHOUSE_SIZE = 'XSMALL'
   AUTO_SUSPEND = 60
   AUTO_RESUME = TRUE;
@@ -188,16 +188,7 @@ source .venv/bin/activate
 python -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt
 ```
 
-```dotenv
-SNOWFLAKE_USER=<your_user>
-SNOWFLAKE_ACCOUNT=<your_account>
-SNOWFLAKE_ROLE=ACCOUNTADMIN
-SNOWFLAKE_WAREHOUSE=elt_pipeline_wh
-# Optional -- defaults to performance_analytics if omitted (matches
-# dbt_project/profiles.yml's default, so leave both unset or override both).
-SNOWFLAKE_DATABASE=performance_analytics
-SNOWFLAKE_PRIVATE_KEY_PATH=~/.snowflake/rsa_key.p8
-```
+
 
 ### Fresh Start Run
 
