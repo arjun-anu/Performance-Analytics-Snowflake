@@ -216,7 +216,7 @@ Why this works:
 
 ### 10) What I would do with another week
 
-- Add full dbt docs and source freshness checks.
+- Add Unit tests for athletes data
 - Add persistent run-level observability tables (`run_id`, file-level counts, status, error metadata). Although row-level lineage is captured (`_source_file`, `_source_row_number`, `_loaded_at`), run-level metadata (`run_id`, file-level status/error tracking) is not yet persisted as first-class observability tables.
 - Introduce richer domain rules (for example stricter optional-field expectations and domain-specific anomaly thresholds).
 - Expand quarantine taxonomy and add remediation workflows.
@@ -224,7 +224,7 @@ Why this works:
 - Add export automation for final mart CSV and evidence pack generation.
 - Would add these parameters to clean_sessions `session_date`, `recorded_at`, `_source_file`, `_source_row_number` to make a Row identifier: `session_pk`, a deterministic MD5 hash over business + lineage fields:
  `session_id`, `athlete_id`, `session_date`, `recorded_at`, `_source_file`, `_source_row_number`
-- 
+- Explore visualizations of the data using streamlit UI in Snowflake
 
 
 
